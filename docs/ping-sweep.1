@@ -1,0 +1,46 @@
+.TH NETWORK-SCANNER 1 "April 2025" "network-scanner v1.0.0" "User Commands"
+
+.SH NAME
+network-scanner \- fast parallel ICMP/TCP ping scanner
+
+.SH SYNOPSIS
+.B network-scanner
+<cidr> [--threads N] [--mode icmp|tcp|fallback] [--port PORT]
+
+.SH DESCRIPTION
+.B network-scanner
+is a high-performance ping scanner for large network ranges.
+It uses raw ICMP sockets or TCP connect to identify live hosts.
+
+.SH OPTIONS
+.TP
+.BR --threads " N"
+Number of parallel threads (default: CPU core count)
+
+.TP
+.BR --mode " icmp|tcp|fallback"
+Choose scan method: ICMP, TCP connect or ICMP with TCP fallback
+
+.TP
+.BR --port " PORT"
+TCP port used when mode is tcp or fallback (default: 80)
+
+.TP
+.BR --help
+Show this help message
+
+.TP
+.BR --version
+Show version info
+
+.SH EXAMPLES
+.TP
+network-scanner 10.0.0.0/24
+.TP
+network-scanner 192.168.1.0/16 --mode fallback --port 443 --threads 64
+
+.SH AUTHOR
+Written by Stepan Kutaj.
+
+.SH LICENSE
+MIT License.
