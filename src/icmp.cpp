@@ -134,4 +134,9 @@ namespace Icmp {
         std::cout << "] " << done << "/" << total << std::flush;
         return res;
     }
-} // namespace Icmp
+
+    bool ping(const std::string& ip) {
+        std::atomic<int> dummy = 0;
+        return ping(ip, dummy, 1);
+    }
+}
