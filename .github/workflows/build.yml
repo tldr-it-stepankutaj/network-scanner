@@ -90,12 +90,16 @@ jobs:
       contents: write
 
     steps:
-      - name: Download artifacts
+      - name: Download Linux artifacts
         uses: actions/download-artifact@v4
         with:
-          name:
-            - release-artifacts-linux
-            - release-artifacts-macos
+          name: release-artifacts-linux
+          path: artifacts
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts-macos
           path: artifacts
 
       - name: Create GitHub release
