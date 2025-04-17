@@ -7,6 +7,9 @@
 #include <atomic>
 #include <iostream>
 #include <mutex>
+#include <vector>
+#include <thread>
+#include <chrono>
 
 Scanner::Scanner(const size_t threads, std::string mode, int port)
     : threadCount(threads), mode(std::move(mode)), port(port) {
@@ -16,49 +19,72 @@ void Scanner::run(const std::string &cidr) const {
     auto [startIp, endIp] = Utils::parseCIDR(cidr);
     ThreadPool pool(threadCount);
 
-    std::atomic<uint32_t> counter = 0;  // Changed from int to uint32_t
-    const uint32_t total = endIp - startIp + 1;  // Changed from int to uint32_t
+    std::atomic<uint32_t> counter = 0;
+    const uint32_t total = endIp - startIp + 1;
 
-    std::mutex outputMutex;
+    // Vector to collect discovered IPs
+    std::mutex resultsMutex;
+    std::vector<std::string> discoveredIps;
 
+    // Create a separate thread for updating the progress bar
+    std::atomic<bool> scanComplete = false;
+    std::thread progressThread([&counter, total, &scanComplete]() {
+        while (!scanComplete) {
+            const uint32_t done = counter.load();
+            constexpr int width = 30;
+            const int filled = static_cast<int>((done * width) / total);
+
+            std::cerr << "\r[";
+            for (int i = 0; i < width; ++i)
+                std::cerr << (i < filled ? '#' : '.');
+            std::cerr << "] " << done << "/" << total << std::flush;
+
+            // Update progress every 100ms
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    });
+
+    // Schedule the scan tasks
     for (uint32_t ip = startIp; ip <= endIp; ++ip) {
-        pool.enqueue([ip, &counter, total, &outputMutex, this] {
+        pool.enqueue([ip, &counter, &resultsMutex, &discoveredIps, this] {
             const std::string ipStr = Utils::uintToIp(ip);
             bool isAlive = false;
 
             if (mode == "icmp") {
-                isAlive = Icmp::ping(ipStr);
+                isAlive = Icmp::ping(ipStr, false); // Set quiet mode to true
             } else if (mode == "tcp") {
-                isAlive = Tcp::ping(ipStr, port);
+                isAlive = Tcp::ping(ipStr, port, false); // Set quiet mode to true
             } else if (mode == "fallback") {
-                isAlive = Icmp::ping(ipStr) || Tcp::ping(ipStr, port);
+                isAlive = Icmp::ping(ipStr, false) || Tcp::ping(ipStr, port, false);
             }
 
-            const uint32_t done = ++counter;  // Changed from int to uint32_t
-            std::lock_guard<std::mutex> lock(outputMutex);
+            // Increment the counter regardless of result
+            ++counter;
 
-            // First clear the current line
-            std::cerr << "\r";
-
-            // If we found a live IP, print it first
+            // If the IP is alive, add it to our results vector
             if (isAlive) {
-                std::cerr << ipStr << std::endl;
+                std::lock_guard<std::mutex> lock(resultsMutex);
+                discoveredIps.push_back(ipStr);
             }
-
-            // Then print the progress bar
-            constexpr int width = 30;
-            const int filled = static_cast<int>((done * width) / total);  // Added explicit cast
-
-            std::cerr << "[";
-            for (int i = 0; i < width; ++i)
-                std::cerr << (i < filled ? '#' : '.');
-            std::cerr << "] " << done << "/" << total << std::flush;
         });
     }
 
+    // Wait for all tasks to complete
     while (counter < total) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    std::cerr << "\nScan completed.\n";
+    // Signal the progress thread to exit and wait for it
+    scanComplete = true;
+    progressThread.join();
+
+    // Clear the progress bar line
+    std::cerr << "\r" << std::string(80, ' ') << "\r";
+
+    // Now print all discovered IPs
+    for (const auto& ip : discoveredIps) {
+        std::cout << ip << std::endl;
+    }
+
+    std::cerr << "Scan completed." << std::endl;
 }
