@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -33,29 +32,28 @@ jobs:
         run: |
           mkdir -p pkg-deb/DEBIAN
           echo "Package: network-scanner
-Version: ${GITHUB_REF_NAME#v}
-Section: utils
-Priority: optional
-Architecture: amd64
-Maintainer: Stepan Kutaj <you@example.com>
-Description: Fast ICMP/TCP ping sweep scanner" > pkg-deb/DEBIAN/control
-  
-  cp -r dist/* pkg-deb/
-  dpkg-deb --build pkg-deb network-scanner-${GITHUB_REF_NAME#v}.deb
+          Version: ${GITHUB_REF_NAME#v}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Stepan Kutaj <stepan.kutaj@tldr-it.com>
+          Description: Fast ICMP/TCP ping sweep scanner" > pkg-deb/DEBIAN/control
+          cp -r dist/* pkg-deb/
+          dpkg-deb --build pkg-deb network-scanner-${GITHUB_REF_NAME#v}.deb
 
-  - name: Create RPM package
-    run: |
-      mkdir -p rpm-root/usr
-      cp -r dist/* rpm-root/usr
-      fpm -s dir -t rpm -n network-scanner -v ${GITHUB_REF_NAME#v} -C rpm-root .
+      - name: Create RPM package
+        run: |
+          mkdir -p rpm-root/usr
+          cp -r dist/* rpm-root/usr
+          fpm -s dir -t rpm -n network-scanner -v ${GITHUB_REF_NAME#v} -C rpm-root .
 
-  - uses: actions/upload-artifact@v4
-    with:
-      name: linux-build
-      path: |
-        network-scanner-linux.tar.gz
-        network-scanner-${{ github.ref_name }}.deb
-        *.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            network-scanner-linux.tar.gz
+            network-scanner-${{ github.ref_name }}.deb
+            *.rpm
 
   build-macos:
     runs-on: macos-latest
