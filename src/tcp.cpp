@@ -22,7 +22,10 @@ namespace Tcp {
 
         auto start = std::chrono::steady_clock::now();
 
-        connect(sockfd, (sockaddr*)&addr, sizeof(addr));
+        if (const int connResult = connect(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)); connResult < 0 && errno != EINPROGRESS) {
+            close(sockfd);
+            return false; // connection failed immediately
+        }
 
         fd_set fds;
         FD_ZERO(&fds);
