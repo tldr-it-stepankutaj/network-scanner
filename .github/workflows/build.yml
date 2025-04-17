@@ -23,13 +23,15 @@ jobs:
             cmake --install build --prefix dist/usr &&
             tar -czvf network-scanner-linux.tar.gz -C dist . &&
             mkdir -p pkg-deb/DEBIAN &&
-            echo "Package: network-scanner
+            cat <<EOF > pkg-deb/DEBIAN/control
+            Package: network-scanner
             Version: ${GITHUB_REF_NAME#v}
             Section: utils
             Priority: optional
             Architecture: amd64
             Maintainer: Stepan Kutaj <stepan.kutaj@tldr-it.com>
-            Description: Fast ICMP/TCP ping sweep scanner" > pkg-deb/DEBIAN/control &&
+            Description: Fast ICMP/TCP ping sweep scanner
+            EOF &&
             cp -r dist/* pkg-deb/ &&
             dpkg-deb --build pkg-deb network-scanner-${GITHUB_REF_NAME#v}.deb &&
             mkdir -p rpm-root/usr &&
