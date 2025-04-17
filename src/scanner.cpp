@@ -8,15 +8,16 @@
 #include <iostream>
 #include <mutex>
 
-Scanner::Scanner(size_t threads, std::string mode, int port)
-    : threadCount(threads), mode(std::move(mode)), port(port) {}
+Scanner::Scanner(const size_t threads, std::string mode, int port)
+    : threadCount(threads), mode(std::move(mode)), port(port) {
+}
 
-void Scanner::run(const std::string& cidr) const {
+void Scanner::run(const std::string &cidr) const {
     auto [startIp, endIp] = Utils::parseCIDR(cidr);
     ThreadPool pool(threadCount);
 
-    std::atomic<int> counter = 0;
-    const int total = endIp - startIp + 1;
+    std::atomic<uint32_t> counter = 0;  // Changed from int to uint32_t
+    const uint32_t total = endIp - startIp + 1;  // Changed from int to uint32_t
 
     std::mutex outputMutex;
 
@@ -33,25 +34,25 @@ void Scanner::run(const std::string& cidr) const {
                 isAlive = Icmp::ping(ipStr) || Tcp::ping(ipStr, port);
             }
 
-            int done = ++counter;
+            const uint32_t done = ++counter;  // Changed from int to uint32_t
+            std::lock_guard<std::mutex> lock(outputMutex);
 
-            {
-                std::lock_guard<std::mutex> lock(outputMutex);
+            // First clear the current line
+            std::cerr << "\r";
 
-                // Progress bar
-                const int width = 30;
-                int filled = (done * width) / total;
-
-                std::cerr << "\r[";
-                for (int i = 0; i < width; ++i)
-                    std::cerr << (i < filled ? '#' : '.');
-                std::cerr << "] " << done << "/" << total << std::flush;
-
-                // Print only successful IPs
-                if (isAlive) {
-                    std::cout << "\n" << ipStr << std::flush;
-                }
+            // If we found a live IP, print it first
+            if (isAlive) {
+                std::cerr << ipStr << std::endl;
             }
+
+            // Then print the progress bar
+            constexpr int width = 30;
+            const int filled = static_cast<int>((done * width) / total);  // Added explicit cast
+
+            std::cerr << "[";
+            for (int i = 0; i < width; ++i)
+                std::cerr << (i < filled ? '#' : '.');
+            std::cerr << "] " << done << "/" << total << std::flush;
         });
     }
 

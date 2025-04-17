@@ -1,6 +1,6 @@
 #include "../include/thread_pool.hpp"
 
-ThreadPool::ThreadPool(size_t threads) {
+ThreadPool::ThreadPool(const size_t threads) {
     for (size_t i = 0; i < threads; ++i) {
         workers.emplace_back([this] {
             for (;;) {
