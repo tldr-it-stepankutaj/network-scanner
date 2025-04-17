@@ -44,27 +44,27 @@ jobs:
       - name: Set up Docker
         uses: docker/setup-buildx-action@v3
 
-      - name: Build RPM in CentOS container
+      - name: Build RPM in Rocky Linux container
         run: |
-          # Create a Dockerfile for building in CentOS
+          # Create a Dockerfile for building in Rocky Linux 8
           cat > Dockerfile.rpm << EOF
-          FROM centos:7
+          FROM rockylinux:8
           
           # Install build dependencies
-          RUN yum -y install epel-release && \
-              yum -y install cmake3 gcc-c++ make rpm-build
+          RUN dnf -y install epel-release && \
+              dnf -y install cmake gcc-c++ make rpm-build
           
           # Copy source code
           COPY . /src
           WORKDIR /src
           
           # Build with static linking for C++ standard library
-          RUN cmake3 -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
-          RUN cmake3 --build build --parallel
+          RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+          RUN cmake --build build --parallel
           
           # Create RPM structure
           RUN mkdir -p /root/rpmbuild/{SOURCES,SPECS,BUILD,RPMS,SRPMS}
-          RUN cmake3 --install build --prefix /root/rpmbuild/BUILD/usr
+          RUN cmake --install build --prefix /root/rpmbuild/BUILD/usr
           
           # Create RPM spec file
           RUN echo "Name: network-scanner" > /root/rpmbuild/SPECS/network-scanner.spec
