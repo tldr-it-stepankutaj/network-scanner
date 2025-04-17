@@ -27,8 +27,10 @@ void Scanner::run(const std::string &cidr) const {
             } else if (mode == "tcp") {
                 Tcp::ping(ipStr, port);
             } else if (mode == "fallback") {
-                if (!Icmp::ping(ipStr)) {
+                if (!Icmp::ping(ipStr, counter, total)) {
                     Tcp::ping(ipStr, port);
+                } else {
+                    std::cout << "\n" << ipStr << "\n";
                 }
             }
         });
