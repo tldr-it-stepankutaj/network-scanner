@@ -26,6 +26,61 @@ network-scanner <CIDR> [--threads N] [--mode icmp|tcp|fallback] [--port PORT]
 network-scanner 192.168.1.0/24 --mode fallback --port 443 --threads 64
 ```
 
+## 📋 Dependencies
+
+### Runtime Dependencies
+- libstdc++ (C++ Standard Library)
+- glibc (≥ 2.17)
+
+### Optional Dependencies
+- `fping` - used in fallback mode if raw sockets aren't available (install with `apt`, `yum`, or `brew`)
+
+## 💻 Compatibility
+
+### Tested Operating Systems
+- ✅ Ubuntu 20.04 LTS and newer
+- ✅ Debian 10 and newer
+- ✅ CentOS/RHEL 7 and newer
+- ✅ Fedora 33 and newer
+- ✅ macOS 10.15 (Catalina) and newer
+
+### Known Issues
+- ❗ RedHat (Oracle Linux) 9.5: `network-scanner: /lib64/libstdc++.so.6: version 'GLIBCXX_3.4.30' not found (required by network-scanner)`
+
+### Required Permissions
+- ICMP mode requires root privileges to create raw sockets
+- TCP mode can be run as a non-privileged user
+
+## 📥 Download
+
+Pre-built binaries are available for Linux systems:
+
+### Latest Release
+
+| Platform | Package | Link |
+|----------|---------|------|
+| Linux (Debian/Ubuntu) | DEB | [network-scanner-latest.deb](https://github.com/tldr-it-stepankutaj/network-scanner/releases/latest/download/network-scanner-*.deb) |
+| Linux (RHEL/CentOS/Fedora) | RPM | [network-scanner-latest.rpm](https://github.com/tldr-it-stepankutaj/network-scanner/releases/latest/download/network-scanner-*.rpm) |
+| Linux (Generic) | TAR.GZ | [network-scanner-linux.tar.gz](https://github.com/tldr-it-stepankutaj/network-scanner/releases/latest/download/network-scanner-linux.tar.gz) |
+
+### Installation from Binary Archive
+
+For the generic Linux package (tar.gz):
+
+```bash
+# Download the latest release
+curl -LO https://github.com/tldr-it-stepankutaj/network-scanner/releases/latest/download/network-scanner-linux.tar.gz
+
+# Extract
+tar -xzf network-scanner-linux.tar.gz
+
+# Install (requires root privileges)
+sudo cp -r usr/* /usr/
+
+# Verify installation
+network-scanner --version
+```
+
 ## 🔧 Build
 
 ### Prerequisites
@@ -33,6 +88,14 @@ network-scanner 192.168.1.0/24 --mode fallback --port 443 --threads 64
 - CMake ≥ 3.10
 - C++17 compiler (GCC / Clang)
 - macOS or Linux
+
+### Build Dependencies
+
+- `cmake` (≥ 3.10)
+- `g++` or `clang++` with C++17 support
+- `make`
+- For developing/building RPM: `rpm-build`
+- For developing/building DEB: `dpkg-dev`
 
 ### Build instructions
 
@@ -46,11 +109,21 @@ make -j$(nproc)
 
 ## 📦 Install
 
+### From Source
 ```bash
 sudo make install
 ```
 
 Manpage and shell completions will also be installed if available.
+
+### From Package
+```bash
+# Debian/Ubuntu
+sudo dpkg -i network-scanner-*.deb
+
+# RHEL/CentOS/Fedora
+sudo rpm -i network-scanner-*.rpm
+```
 
 ## 🛡 License
 
