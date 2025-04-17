@@ -58,13 +58,13 @@ jobs:
           COPY . /src
           WORKDIR /src
           
-          # Build with static linking for C++ standard library
-          RUN cmake -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
-          RUN cmake --build build --parallel
+          # Use a different build directory name to avoid conflicts
+          RUN cmake -B docker_build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+          RUN cmake --build docker_build --parallel
           
           # Create RPM structure
           RUN mkdir -p /root/rpmbuild/{SOURCES,SPECS,BUILD,RPMS,SRPMS}
-          RUN cmake --install build --prefix /root/rpmbuild/BUILD/usr
+          RUN cmake --install docker_build --prefix /root/rpmbuild/BUILD/usr
           
           # Create RPM spec file
           RUN echo "Name: network-scanner" > /root/rpmbuild/SPECS/network-scanner.spec
