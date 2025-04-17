@@ -71,13 +71,11 @@ namespace Icmp {
         icmp->un.echo.sequence = 1;
         icmp->checksum = checksum(sendbuf, sizeof(sendbuf));
 
-        auto start = std::chrono::steady_clock::now();
-
         if (sendto(sockfd, sendbuf, sizeof(sendbuf), 0,
                    reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
             close(sockfd);
             return false;
-        }
+                   }
 
         fd_set fds;
         FD_ZERO(&fds);
@@ -88,9 +86,23 @@ namespace Icmp {
 
         if (select(sockfd + 1, &fds, nullptr, nullptr, &timeout) > 0) {
             char recvbuf[1500];
-            ssize_t n = recv(sockfd, recvbuf, sizeof(recvbuf), 0);
+            sockaddr_in from{};
+            socklen_t socklen = sizeof(from);
+
+            ssize_t n = recvfrom(sockfd, recvbuf, sizeof(recvbuf), 0,
+                               reinterpret_cast<sockaddr*>(&from), &socklen);
+
             if (n > 0) {
-                result = true;
+                // Verify this is a response to our ping
+                const auto* ip_header = reinterpret_cast<struct ip*>(recvbuf);
+                const int ip_header_len = ip_header->ip_hl << 2;
+
+                // ICMP header follows the IP header
+
+                // Check if this is an ICMP ECHO REPLY (type 0) and if it's for our specific ID
+                if (const auto* icmp_reply = reinterpret_cast<struct icmphdr*>(recvbuf + ip_header_len); icmp_reply->type == 0 && icmp_reply->un.echo.id == getpid()) {
+                    result = true;
+                }
             }
         }
 
