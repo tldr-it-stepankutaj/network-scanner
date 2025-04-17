@@ -10,7 +10,7 @@
 namespace Tcp {
 
     bool ping(const std::string& ip, int port) {
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        const int sockfd = socket(AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0) return false;
 
         fcntl(sockfd, F_SETFL, O_NONBLOCK);
@@ -20,7 +20,7 @@ namespace Tcp {
         addr.sin_port = htons(port);
         inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
 
-        auto start = std::chrono::steady_clock::now();
+        const auto start = std::chrono::steady_clock::now();
 
         if (const int connResult = connect(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)); connResult < 0 && errno != EINPROGRESS) {
             close(sockfd);
