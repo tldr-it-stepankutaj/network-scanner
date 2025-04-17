@@ -49,7 +49,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-build
+          name: release-artifacts
           path: |
             network-scanner-linux.tar.gz
             network-scanner-${{ github.ref_name }}.deb
@@ -77,5 +77,34 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-build
+          name: release-artifacts
           path: network-scanner-macos.tar.gz
+
+  release:
+    name: Create GitHub Release
+    needs:
+      - build-macos
+      - build-linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: artifacts
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: artifacts/*
+          body: |
+            🚀 New release ${{ github.ref_name }} of network-scanner
+            - Includes Linux + macOS binaries
+            - DEB & RPM packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
