@@ -51,11 +51,11 @@ void Scanner::run(const std::string &cidr) const {
             bool isAlive = false;
 
             if (mode == "icmp") {
-                isAlive = Icmp::ping(ipStr, false); // Set quiet mode to true
+                isAlive = Icmp::ping(ipStr, true); // Set quiet mode to true
             } else if (mode == "tcp") {
-                isAlive = Tcp::ping(ipStr, port, false); // Set quiet mode to true
+                isAlive = Tcp::ping(ipStr, port, true); // Set quiet mode to true
             } else if (mode == "fallback") {
-                isAlive = Icmp::ping(ipStr, false) || Tcp::ping(ipStr, port, false);
+                isAlive = Icmp::ping(ipStr, true) || Tcp::ping(ipStr, port, true);
             }
 
             // Increment the counter regardless of result
@@ -82,6 +82,7 @@ void Scanner::run(const std::string &cidr) const {
     std::cerr << "\r" << std::string(80, ' ') << "\r";
 
     // Now print all discovered IPs
+    std::cout << "Discovered " << discoveredIps.size() << " live hosts:" << std::endl;
     for (const auto& ip : discoveredIps) {
         std::cout << ip << std::endl;
     }
