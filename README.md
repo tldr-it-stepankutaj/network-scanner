@@ -1,6 +1,6 @@
 # network-scanner
 
-![GitHub release](https://img.shields.io/github/v/release/tldr-it-stepankutaj/network-scanner)
+![GitHub Release](https://img.shields.io/github/v/release/tldr-it-stepankutaj/network-scanner)
 ![CI](https://github.com/tldr-it-stepankutaj/network-scanner/actions/workflows/build.yml/badge.svg)
 
 `network-scanner` is a blazing-fast network sweep tool written in C++ that supports ICMP (ping), TCP port probing, and fallback modes. It efficiently scans entire IP ranges and provides color-coded RTT output, ideal for sysadmins, red teamers, or infrastructure testers.
