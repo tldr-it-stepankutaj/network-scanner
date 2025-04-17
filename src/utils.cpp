@@ -1,6 +1,10 @@
-#include "../include/utils.hpp"
+#include <string>
+#include <utility>
+#include <cstdint>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+
+#include "../include/utils.hpp"
 
 namespace Utils {
     uint32_t ipToUint(const std::string& ipStr) {
@@ -14,7 +18,7 @@ namespace Utils {
         addr.s_addr = htonl(ip);
         char str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &addr, str, INET_ADDRSTRLEN);
-        return std::string(str);
+        return {str};
     }
 
     std::pair<uint32_t, uint32_t> parseCIDR(const std::string& cidr) {

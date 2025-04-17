@@ -6,14 +6,14 @@
 
 namespace Icmp {
     bool ping(const std::string& ip) {
-        auto start = std::chrono::steady_clock::now();
-        std::string cmd = "ping -c 1 -W 1 " + ip + " > /dev/null 2>&1";
-        int ret = std::system(cmd.c_str());
-        auto end = std::chrono::steady_clock::now();
+        const auto start = std::chrono::steady_clock::now();
+        const std::string cmd = "ping -c 1 -W 1 " + ip + " > /dev/null 2>&1";
+        const int ret = std::system(cmd.c_str());
+        const auto end = std::chrono::steady_clock::now();
 
         if (ret == 0) {
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-            std::string color = (ms < 30) ? "\033[32m" : (ms < 100) ? "\033[33m" : "\033[31m";
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            const std::string color = (ms < 30) ? "\033[32m" : (ms < 100) ? "\033[33m" : "\033[31m";
             std::cout << color << ip << " is alive via ping (macOS subprocess, RTT: " << ms << " ms)\033[0m\n";
             return true;
         }
