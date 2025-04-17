@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build in Docker (Debian 11)
+      - name: Build in Docker (Debian 12)
         run: |
           docker run --rm -v "$PWD:/src" -w /src debian:12 bash -c '
             apt update &&
