@@ -41,56 +41,22 @@ jobs:
           cp -r dist/* pkg-deb/
           dpkg-deb --build pkg-deb network-scanner-${GITHUB_REF_NAME#v}.deb
 
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build RPM in Rocky Linux container
+      - name: Create RPM package directly
         run: |
-          # Create a Dockerfile for building in Rocky Linux 8
-          cat > Dockerfile.rpm << EOF
-          FROM rockylinux:8
-          
-          # Install build dependencies
-          RUN dnf -y install epel-release && \
-              dnf -y install cmake gcc-c++ make rpm-build libstdc++-static
-          
-          # Create RPM structure
-          RUN mkdir -p /root/rpmbuild/{SOURCES,SPECS,BUILD,RPMS,SRPMS}
-          
-          # Copy the prebuilt binaries directly
-          COPY dist/usr /root/rpmbuild/BUILD/usr
-          
-          # Create RPM spec file
-          RUN echo "Name: network-scanner" > /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "Version: ${GITHUB_REF_NAME#v}" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "Release: 1%{?dist}" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "Summary: Fast ICMP/TCP ping sweep scanner" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "License: MIT" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "BuildArch: x86_64" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "AutoReq: no" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "%description" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "Fast parallel ICMP/TCP ping scanner for large network ranges" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "%files" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "%defattr(-,root,root,-)" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "/usr/bin/network-scanner" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "/usr/share/man/man1/network-scanner.1" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "/usr/share/bash-completion/completions/network-scanner.bash" >> /root/rpmbuild/SPECS/network-scanner.spec
-          RUN echo "/usr/share/zsh/site-functions/_network-scanner" >> /root/rpmbuild/SPECS/network-scanner.spec
-          
-          # Build RPM
-          RUN rpmbuild -bb /root/rpmbuild/SPECS/network-scanner.spec
-          EOF
-          
-          # Build the Docker image
-          docker build -t network-scanner-rpm-builder -f Dockerfile.rpm .
-          
-          # Copy the RPM from the container
-          docker run --rm -v $(pwd):/output network-scanner-rpm-builder sh -c "cp /root/rpmbuild/RPMS/x86_64/network-scanner-*.rpm /output/"
-          
-          # Rename the RPM file to match our naming convention
-          mv network-scanner-*.rpm network-scanner-${GITHUB_REF_NAME#v}.rpm
+          fpm -s dir -t rpm \
+            -n network-scanner \
+            -v ${GITHUB_REF_NAME#v} \
+            -p network-scanner-${GITHUB_REF_NAME#v}.rpm \
+            --rpm-rpmbuild-define "_build_id_links none" \
+            --rpm-rpmbuild-define "_binary_payload w9.gzdio" \
+            --rpm-rpmbuild-define "_binary_filedigest_algorithm 1" \
+            --rpm-rpmbuild-define "_source_filedigest_algorithm 1" \
+            --rpm-os linux \
+            --rpm-auto-add-directories \
+            --no-rpm-sign \
+            --rpm-digest sha1 \
+            -C dist \
+            usr
 
       - uses: actions/upload-artifact@v4
         with:
