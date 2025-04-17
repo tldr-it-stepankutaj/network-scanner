@@ -6,10 +6,13 @@
 #include <sys/select.h>
 #include <chrono>
 #include <iostream>
+#include <mutex>
 
 namespace Tcp {
+    // Protect console output
+    static std::mutex outputMutex;
 
-    bool ping(const std::string& ip, int port) {
+    bool ping(const std::string& ip, int port, bool quiet) {
         const int sockfd = socket(AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0) return false;
 
@@ -22,7 +25,8 @@ namespace Tcp {
 
         const auto start = std::chrono::steady_clock::now();
 
-        if (const int connResult = connect(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)); connResult < 0 && errno != EINPROGRESS) {
+        if (const int connResult = connect(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+            connResult < 0 && errno != EINPROGRESS) {
             close(sockfd);
             return false; // connection failed immediately
         }
@@ -42,13 +46,17 @@ namespace Tcp {
                 auto end = std::chrono::steady_clock::now();
                 auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-                std::string color = "\033[0m";
-                if (ms < 30)       color = "\033[32m";
-                else if (ms < 100) color = "\033[33m";
-                else               color = "\033[31m";
+                if (!quiet) {
+                    std::lock_guard<std::mutex> lock(outputMutex);
 
-                std::cout << color << ip << " is alive via TCP port " << port
-                          << " (RTT: " << ms << " ms)\033[0m\n";
+                    std::string color = "\033[0m";
+                    if (ms < 30)       color = "\033[32m";
+                    else if (ms < 100) color = "\033[33m";
+                    else               color = "\033[31m";
+
+                    std::cerr << color << ip << " is alive via TCP port " << port
+                              << " (RTT: " << ms << " ms)\033[0m" << std::endl;
+                }
 
                 success = true;
             }
