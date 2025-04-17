@@ -52,7 +52,7 @@ jobs:
           name: release-artifacts-linux
           path: |
             network-scanner-linux.tar.gz
-            network-scanner-${{ github.ref_name }}.deb
+            *.deb
             *.rpm
 
   build-macos:
