@@ -55,7 +55,7 @@ namespace Icmp {
         return static_cast<uint16_t>(~sum);
     }
 
-    bool pingRawSocket(const std::string& ip) {
+    bool pingRawSocket(const std::string& ip, bool quiet) {
         int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
         if (sockfd < 0) return false;
 
@@ -98,7 +98,7 @@ namespace Icmp {
         return result;
     }
 
-    bool pingDatagramSocket(const std::string& ip) {
+    bool pingDatagramSocket(const std::string& ip, bool quiet) {
         int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
         if (sockfd < 0) return false;
 
@@ -141,9 +141,9 @@ namespace Icmp {
         return result;
     }
 
-    bool pingFallback(const std::string& ip) {
-        if (pingDatagramSocket(ip)) return true;
-        if (pingRawSocket(ip)) return true;
+    bool pingFallback(const std::string& ip, bool quiet) {
+        if (pingDatagramSocket(ip, quiet)) return true;
+        if (pingRawSocket(ip, quiet)) return true;
 
         std::string cmd = "fping -c1 -t100 " + ip + " 2>/dev/null 1>/dev/null";
         int ret = std::system(cmd.c_str());
@@ -154,15 +154,15 @@ namespace Icmp {
         return false;
     }
 
-    bool ping(const std::string& ip, std::atomic<int>& counter, const int total) {
-        const bool res = pingFallback(ip);
+    bool ping(const std::string& ip, std::atomic<int>& counter, const int total, const bool quiet) {
+        const bool res = pingFallback(ip, quiet);
 
         // Only lock for output operations
         {
             std::lock_guard<std::mutex> lock(outputMutex);
 
-            // If we found a live IP, print it first
-            if (res) {
+            // If we found a live IP, print it first (unless in quiet mode)
+            if (res && !quiet) {
                 std::cerr << ip << std::endl;
             }
 
@@ -170,17 +170,19 @@ namespace Icmp {
             constexpr int width = 30;
             const int filled = static_cast<int>((static_cast<double>(done) * width) / total);
 
-            // Print the progress bar
-            std::cerr << "\r[";
-            for (int i = 0; i < width; ++i) std::cerr << (i < filled ? '#' : '.');
-            std::cerr << "] " << done << "/" << total << std::flush;
+            // Print the progress bar (unless in quiet mode)
+            if (!quiet) {
+                std::cerr << "\r[";
+                for (int i = 0; i < width; ++i) std::cerr << (i < filled ? '#' : '.');
+                std::cerr << "] " << done << "/" << total << std::flush;
+            }
         }
 
         return res;
     }
 
-    bool ping(const std::string& ip) {
+    bool ping(const std::string& ip, bool quiet) {
         std::atomic<int> dummy = 0;
-        return ping(ip, dummy, 1);
+        return ping(ip, dummy, 1, quiet);
     }
 }
