@@ -7,12 +7,13 @@
 #include <iostream>
 
 Scanner::Scanner(size_t threads, std::string mode, int port)
-    : threadCount(threads), mode(std::move(mode)), port(port) {}
+    : threadCount(threads), mode(std::move(mode)), port(port) {
+}
 
-void Scanner::run(const std::string& cidr) const {
+void Scanner::run(const std::string &cidr) const {
     auto [startIp, endIp] = Utils::parseCIDR(cidr);
     ThreadPool pool(threadCount);
-    std::atomic<uint32_t> counter = 0;
+    std::atomic<int> counter = 0;
     const uint32_t total = endIp - startIp + 1;
 
     for (uint32_t ip = startIp; ip <= endIp; ++ip) {
@@ -20,17 +21,15 @@ void Scanner::run(const std::string& cidr) const {
             const std::string ipStr = Utils::uintToIp(ip);
 
             if (mode == "icmp") {
-                Icmp::ping(ipStr);
+                if (Icmp::ping(ipStr, counter, total)) {
+                    std::cout << "\n" << ipStr << "\n";
+                }
             } else if (mode == "tcp") {
                 Tcp::ping(ipStr, port);
             } else if (mode == "fallback") {
                 if (!Icmp::ping(ipStr)) {
                     Tcp::ping(ipStr, port);
                 }
-            }
-
-            if (++counter % 1000 == 0) {
-                std::cerr << counter << " / " << total << " done\r";
             }
         });
     }
