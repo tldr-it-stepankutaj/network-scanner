@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <utility>
+#include <cstdint>
 
 namespace Utils {
     uint32_t ipToUint(const std::string& ipStr);
