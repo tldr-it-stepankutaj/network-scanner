@@ -1,0 +1,8 @@
+#compdef network-scanner
+
+_arguments \
+  '--threads[Number of threads]:threads:_guard "[0-9]*" "number"' \
+  '--mode[Scan mode]:mode:(icmp tcp fallback)' \
+  '--port[TCP port]:port:_guard "[0-9]*" "port number"' \
+  '--help[Show help]' \
+  '--version[Show version]'
