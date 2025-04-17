@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
-#include "scanner.hpp"
+#include "../include/scanner.hpp"
 
 const std::string VERSION = "network-scanner v1.0.0";
 

@@ -1,8 +1,8 @@
-#include "scanner.hpp"
-#include "utils.hpp"
-#include "icmp.hpp"
-#include "tcp.hpp"
-#include "thread_pool.hpp"
+#include "../include/scanner.hpp"
+#include "../include/utils.hpp"
+#include "../include/icmp.hpp"
+#include "../include/tcp.hpp"
+#include "../include/thread_pool.hpp"
 #include <atomic>
 #include <iostream>
 
