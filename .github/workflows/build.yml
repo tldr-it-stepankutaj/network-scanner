@@ -52,19 +52,13 @@ jobs:
           
           # Install build dependencies
           RUN dnf -y install epel-release && \
-              dnf -y install cmake gcc-c++ make rpm-build
-          
-          # Copy source code
-          COPY . /src
-          WORKDIR /src
-          
-          # Use a different build directory name to avoid conflicts
-          RUN cmake -B docker_build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
-          RUN cmake --build docker_build --parallel
+              dnf -y install cmake gcc-c++ make rpm-build libstdc++-static
           
           # Create RPM structure
           RUN mkdir -p /root/rpmbuild/{SOURCES,SPECS,BUILD,RPMS,SRPMS}
-          RUN cmake --install docker_build --prefix /root/rpmbuild/BUILD/usr
+          
+          # Copy the prebuilt binaries directly
+          COPY dist/usr /root/rpmbuild/BUILD/usr
           
           # Create RPM spec file
           RUN echo "Name: network-scanner" > /root/rpmbuild/SPECS/network-scanner.spec
@@ -73,6 +67,7 @@ jobs:
           RUN echo "Summary: Fast ICMP/TCP ping sweep scanner" >> /root/rpmbuild/SPECS/network-scanner.spec
           RUN echo "License: MIT" >> /root/rpmbuild/SPECS/network-scanner.spec
           RUN echo "BuildArch: x86_64" >> /root/rpmbuild/SPECS/network-scanner.spec
+          RUN echo "AutoReq: no" >> /root/rpmbuild/SPECS/network-scanner.spec
           RUN echo "" >> /root/rpmbuild/SPECS/network-scanner.spec
           RUN echo "%description" >> /root/rpmbuild/SPECS/network-scanner.spec
           RUN echo "Fast parallel ICMP/TCP ping scanner for large network ranges" >> /root/rpmbuild/SPECS/network-scanner.spec
