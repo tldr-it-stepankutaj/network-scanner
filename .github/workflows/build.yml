@@ -43,9 +43,16 @@ jobs:
 
       - name: Create RPM package
         run: |
-          mkdir -p rpm-root/usr
-          cp -r dist/* rpm-root/usr
-          fpm -s dir -t rpm -n network-scanner -v ${GITHUB_REF_NAME#v} -C rpm-root .
+          fpm -s dir -t rpm \
+            -n network-scanner \
+            -v ${GITHUB_REF_NAME#v} \
+            -p network-scanner-${GITHUB_REF_NAME#v}.rpm \
+            -C dist \
+            --prefix=/ \
+            usr/bin/network-scanner \
+            usr/share/man/man1/network-scanner.1 \
+            usr/share/bash-completion/completions/network-scanner.bash \
+            usr/share/zsh/site-functions/_network-scanner
 
       - uses: actions/upload-artifact@v4
         with:
@@ -55,35 +62,9 @@ jobs:
             *.deb
             *.rpm
 
-  build-macos:
-    runs-on: macos-latest
-    name: Build on macOS
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: brew install cmake
-
-      - name: Configure & build
-        run: |
-          cmake -B build -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build build
-          cmake --install build --prefix dist
-
-      - name: Create tar.gz
-        run: |
-          tar -czvf network-scanner-macos.tar.gz -C dist .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-artifacts-macos
-          path: network-scanner-macos.tar.gz
-
   release:
     name: Create GitHub Release
     needs:
-      - build-macos
       - build-linux
     runs-on: ubuntu-latest
     permissions:
@@ -96,12 +77,6 @@ jobs:
           name: release-artifacts-linux
           path: artifacts
 
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: release-artifacts-macos
-          path: artifacts
-
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -110,7 +85,7 @@ jobs:
           files: artifacts/*
           body: |
             🚀 New release ${{ github.ref_name }} of network-scanner
-            - Includes Linux + macOS binaries
+            - Includes Linux binaries
             - DEB & RPM packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
