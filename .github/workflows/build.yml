@@ -6,46 +6,36 @@ on:
       - 'v*'
 jobs:
   build-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     name: Build on Linux
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Build in Docker (Debian 11)
         run: |
-          sudo apt update
-          sudo apt install -y cmake g++ dpkg-dev rpm ruby ruby-dev rubygems build-essential
-          sudo gem install --no-document fpm
-
-      - name: Configure & build
-        run: |
-          cmake -B build -DCMAKE_INSTALL_PREFIX=/usr
-          cmake --build build --parallel
-          cmake --install build --prefix dist/usr
-
-      - name: Create tar.gz
-        run: |
-          tar -czvf network-scanner-linux.tar.gz -C dist .
-
-      - name: Create DEB package
-        run: |
-          mkdir -p pkg-deb/DEBIAN
-          echo "Package: network-scanner
-          Version: ${GITHUB_REF_NAME#v}
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Maintainer: Stepan Kutaj <stepan.kutaj@tldr-it.com>
-          Description: Fast ICMP/TCP ping sweep scanner" > pkg-deb/DEBIAN/control
-          cp -r dist/* pkg-deb/
-          dpkg-deb --build pkg-deb network-scanner-${GITHUB_REF_NAME#v}.deb
-
-      - name: Create RPM package
-        run: |
-          mkdir -p rpm-root/usr
-          cp -r dist/* rpm-root/usr
-          fpm -s dir -t rpm -n network-scanner -v ${GITHUB_REF_NAME#v} -C rpm-root .
+          docker run --rm -v "$PWD:/src" -w /src debian:11 bash -c '
+            apt update &&
+            apt install -y cmake g++ dpkg-dev rpm ruby ruby-dev rubygems build-essential &&
+            gem install --no-document fpm &&
+            cmake -B build -DCMAKE_INSTALL_PREFIX=/usr &&
+            cmake --build build --parallel &&
+            cmake --install build --prefix dist/usr &&
+            tar -czvf network-scanner-linux.tar.gz -C dist . &&
+            mkdir -p pkg-deb/DEBIAN &&
+            echo "Package: network-scanner
+            Version: ${GITHUB_REF_NAME#v}
+            Section: utils
+            Priority: optional
+            Architecture: amd64
+            Maintainer: Stepan Kutaj <stepan.kutaj@tldr-it.com>
+            Description: Fast ICMP/TCP ping sweep scanner" > pkg-deb/DEBIAN/control &&
+            cp -r dist/* pkg-deb/ &&
+            dpkg-deb --build pkg-deb network-scanner-${GITHUB_REF_NAME#v}.deb &&
+            mkdir -p rpm-root/usr &&
+            cp -r dist/* rpm-root/usr &&
+            fpm -s dir -t rpm -n network-scanner -v ${GITHUB_REF_NAME#v} -C rpm-root .
+          '
 
       - uses: actions/upload-artifact@v4
         with:
