@@ -6,6 +6,7 @@
 BUILD_TYPE="Release"
 PREFIX="/usr"
 CMAKE_OPTIONS=""
+INSTALL_DIR=""
 
 # Parse arguments
 for arg in "$@"; do
@@ -18,6 +19,8 @@ for arg in "$@"; do
       echo "                          [default: /usr]"
       echo "  --debug                 Build with debug symbols"
       echo "  --cmake-options=OPTS    Pass additional options to CMake"
+      echo "  --destdir=DIR           Set installation staging directory"
+      echo "                          [useful for package builders]"
       echo ""
       exit 0
       ;;
@@ -29,6 +32,9 @@ for arg in "$@"; do
       ;;
     --cmake-options=*)
       CMAKE_OPTIONS="${arg#*=}"
+      ;;
+    --destdir=*)
+      INSTALL_DIR="${arg#*=}"
       ;;
     *)
       echo "Unknown option: $arg"
@@ -66,7 +72,7 @@ all:
 	@cd build && make
 
 install:
-	@cd build && make install
+	@cd build && make install ${INSTALL_DIR:+DESTDIR=${INSTALL_DIR}}
 
 clean:
 	@cd build && make clean
@@ -83,11 +89,112 @@ EOF
 
 chmod +x Makefile
 
+# Create necessary directories if they don't exist
+mkdir -p completion
+mkdir -p docs
+
+# Check if bash completion exists, create if not
+if [ ! -f "completion/network-scanner-completion.bash" ]; then
+    echo "Creating bash completion script..."
+    cat > completion/network-scanner-completion.bash << EOF
+#!/bin/bash
+
+_network-scanner_completions() {
+  local cur="\${COMP_WORDS[COMP_CWORD]}"
+  local opts="--threads --mode --port --help --version"
+
+  # shellcheck disable=SC2207
+  COMPREPLY=(\$(compgen -W "\${opts}" -- "\$cur"))
+
+  # Add mode options
+  if [[ \${cur} == --mode=* ]]; then
+    local modes="icmp tcp fallback"
+    local prefix=\${cur%=*}=
+    COMPREPLY=(\$(compgen -P "\$prefix" -W "\$modes" -- "\${cur#*=}"))
+  fi
+}
+
+complete -F _network-scanner_completions network-scanner
+EOF
+    chmod +x completion/network-scanner-completion.bash
+fi
+
+# Check if zsh completion exists, create if not
+if [ ! -f "completion/_network-scanner" ]; then
+    echo "Creating zsh completion script..."
+    cat > completion/_network-scanner << EOF
+#compdef network-scanner
+
+_arguments \\
+  '--threads[Number of threads]:threads:_guard "[0-9]*" "number"' \\
+  '--mode[Scan mode]:mode:(icmp tcp fallback)' \\
+  '--port[TCP port]:port:_guard "[0-9]*" "port number"' \\
+  '--help[Show help]' \\
+  '--version[Show version]'
+EOF
+fi
+
+# Check if man page exists, create if not
+if [ ! -f "docs/network-scanner.1" ]; then
+    echo "Creating man page..."
+    mkdir -p docs
+    cat > docs/network-scanner.1 << EOF
+.TH NETWORK-SCANNER 1 "$(date +%Y-%m-%d)" "network-scanner v1.0.1" "User Commands"
+
+.SH NAME
+network-scanner \\- fast parallel ICMP/TCP ping scanner
+
+.SH SYNOPSIS
+.B network-scanner
+[--threads N] [--mode icmp|tcp|fallback] [--port PORT]
+
+.SH DESCRIPTION
+.B network-scanner
+is a high-performance ping scanner for large network ranges. It uses raw ICMP sockets or TCP connect to identify live hosts.
+
+.SH OPTIONS
+.TP
+.BR --threads " N"
+Number of parallel threads (default: CPU core count)
+
+.TP
+.BR --mode " icmp|tcp|fallback"
+Choose scan method: ICMP, TCP connect or ICMP with TCP fallback
+
+.TP
+.BR --port " PORT"
+TCP port used when mode is tcp or fallback (default: 80)
+
+.TP
+.BR --help
+Show this help message
+
+.TP
+.BR --version
+Show version info
+
+.SH EXAMPLES
+.TP
+network-scanner 10.0.0.0/24
+.TP
+network-scanner 192.168.1.0/16 --mode fallback --port 443 --threads 64
+
+.SH AUTHOR
+Written by Stepan Kutaj (stepan.kutaj@tldr-it.com).
+
+.SH LICENSE
+GPL-3.0 License.
+EOF
+fi
+
 echo ""
 echo "Configuration complete!"
 echo ""
 echo "Build type: $BUILD_TYPE"
 echo "Install prefix: $PREFIX"
+if [ -n "$INSTALL_DIR" ]; then
+    echo "Installation staging directory: $INSTALL_DIR"
+fi
 echo ""
 echo "Run 'make' to build the project"
 echo "Run 'sudo make install' to install"

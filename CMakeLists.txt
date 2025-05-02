@@ -89,29 +89,155 @@ install(TARGETS network-analyzer
 
 # Create symlink from network-analyzer to network-scanner in binary directory
 if(UNIX)
-    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/network-analyzer
-        ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/network-scanner
-    )")
+    # Use a custom command that doesn't fail if permissions are missing
+    install(CODE "
+        message(STATUS \"Creating symlink ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/network-scanner\")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                network-analyzer
+                network-scanner
+            WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}
+            RESULT_VARIABLE LINK_RESULT
+            ERROR_VARIABLE LINK_ERROR
+        )
+        if(LINK_RESULT)
+            message(WARNING \"Failed to create symlink: \${LINK_ERROR}\")
+        endif()
+    ")
 endif()
 
-# Install man page
-install(
-        FILES "${CMAKE_CURRENT_SOURCE_DIR}/docs/network-scanner.1"
-        DESTINATION "${CMAKE_INSTALL_MANDIR}/man1"
-)
+# Check for man page and install if exists
+set(MAN_PAGE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/docs/network-scanner.1")
+if(EXISTS ${MAN_PAGE_PATH})
+    install(
+            FILES ${MAN_PAGE_PATH}
+            DESTINATION "${CMAKE_INSTALL_MANDIR}/man1"
+    )
+else()
+    message(STATUS "Man page not found at ${MAN_PAGE_PATH}, skipping installation")
+endif()
 
-# Install bash completion
+# Create completion directories if they don't exist
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/completion")
+
+# Check for bash completion script and install if exists
+set(BASH_COMPLETION_PATH "${CMAKE_CURRENT_SOURCE_DIR}/completion/network-scanner-completion.bash")
+if(NOT EXISTS ${BASH_COMPLETION_PATH})
+    # Generate bash completion script if not found
+    message(STATUS "Bash completion script not found, generating default")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/completion/network-scanner-completion.bash"
+            "#!/bin/bash
+
+_network-scanner_completions() {
+  local cur=\"\${COMP_WORDS[COMP_CWORD]}\"
+  local opts=\"--threads --mode --port --help --version\"
+
+  # shellcheck disable=SC2207
+  COMPREPLY=($(compgen -W \"\${opts}\" -- \"\$cur\"))
+
+  # Add mode options
+  if [[ \${cur} == --mode=* ]]; then
+    local modes=\"icmp tcp fallback\"
+    local prefix=\${cur%=*}=
+    COMPREPLY=($(compgen -P \"\$prefix\" -W \"\$modes\" -- \"\${cur#*=}\"))
+  fi
+}
+
+complete -F _network-scanner_completions network-scanner
+")
+    set(BASH_COMPLETION_PATH "${CMAKE_CURRENT_BINARY_DIR}/completion/network-scanner-completion.bash")
+endif()
+
 install(
-        FILES "${CMAKE_CURRENT_SOURCE_DIR}/completion/network-scanner-completion.bash"
+        FILES ${BASH_COMPLETION_PATH}
         DESTINATION "${CMAKE_INSTALL_DATADIR}/bash-completion/completions"
         RENAME "network-scanner"
 )
 
-# Install zsh completion
+# Check for zsh completion script and install if exists
+set(ZSH_COMPLETION_PATH "${CMAKE_CURRENT_SOURCE_DIR}/completion/_network-scanner")
+if(NOT EXISTS ${ZSH_COMPLETION_PATH})
+    # Generate zsh completion script if not found
+    message(STATUS "Zsh completion script not found, generating default")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/completion/_network-scanner"
+            "#compdef network-scanner
+
+_arguments \\
+  '--threads[Number of threads]:threads:_guard \"[0-9]*\" \"number\"' \\
+  '--mode[Scan mode]:mode:(icmp tcp fallback)' \\
+  '--port[TCP port]:port:_guard \"[0-9]*\" \"port number\"' \\
+  '--help[Show help]' \\
+  '--version[Show version]'
+")
+    set(ZSH_COMPLETION_PATH "${CMAKE_CURRENT_BINARY_DIR}/completion/_network-scanner")
+endif()
+
 install(
-        FILES "${CMAKE_CURRENT_SOURCE_DIR}/completion/_network-scanner"
+        FILES ${ZSH_COMPLETION_PATH}
         DESTINATION "${CMAKE_INSTALL_DATADIR}/zsh/site-functions"
+)
+
+# Check for man page and generate if not exists
+set(MAN_PAGE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/docs/network-scanner.1")
+if(NOT EXISTS ${MAN_PAGE_PATH})
+    # Create docs directory if it doesn't exist
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/docs")
+
+    # Generate man page if not found
+    message(STATUS "Man page not found, generating default")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/docs/network-scanner.1"
+            ".TH NETWORK-SCANNER 1 \"${PROJECT_BUILD_DATE}\" \"network-scanner v${PROJECT_VERSION}\" \"User Commands\"
+
+.SH NAME
+network-scanner \\- fast parallel ICMP/TCP ping scanner
+
+.SH SYNOPSIS
+.B network-scanner
+[--threads N] [--mode icmp|tcp|fallback] [--port PORT]
+
+.SH DESCRIPTION
+.B network-scanner
+is a high-performance ping scanner for large network ranges. It uses raw ICMP sockets or TCP connect to identify live hosts.
+
+.SH OPTIONS
+.TP
+.BR --threads \" N\"
+Number of parallel threads (default: CPU core count)
+
+.TP
+.BR --mode \" icmp|tcp|fallback\"
+Choose scan method: ICMP, TCP connect or ICMP with TCP fallback
+
+.TP
+.BR --port \" PORT\"
+TCP port used when mode is tcp or fallback (default: 80)
+
+.TP
+.BR --help
+Show this help message
+
+.TP
+.BR --version
+Show version info
+
+.SH EXAMPLES
+.TP
+network-scanner 10.0.0.0/24
+.TP
+network-scanner 192.168.1.0/16 --mode fallback --port 443 --threads 64
+
+.SH AUTHOR
+Written by Stepan Kutaj (stepan.kutaj@tldr-it.com).
+
+.SH LICENSE
+GPL-3.0 License.
+")
+    set(MAN_PAGE_PATH "${CMAKE_CURRENT_BINARY_DIR}/docs/network-scanner.1")
+endif()
+
+install(
+        FILES ${MAN_PAGE_PATH}
+        DESTINATION "${CMAKE_INSTALL_MANDIR}/man1"
 )
 
 # Create uninstall target
