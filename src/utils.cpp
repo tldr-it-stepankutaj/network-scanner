@@ -23,7 +23,7 @@ namespace Utils {
 
     std::pair<uint32_t, uint32_t> parseCIDR(const std::string& cidr) {
         const auto slash = cidr.find('/');
-        std::string ipPart = cidr.substr(0, slash);
+        const std::string ipPart = cidr.substr(0, slash);
         const int prefix = std::stoi(cidr.substr(slash + 1));
         const uint32_t ip = ipToUint(ipPart);
         const uint32_t mask = prefix == 0 ? 0 : (~0U << (32 - prefix));

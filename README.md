@@ -7,23 +7,41 @@
 
 ## ✨ Features
 
-- ✅ CIDR input (e.g., `192.168.0.0/24`, `10.0.0.0/16`)
 - ✅ ICMP scan (raw socket ping)
 - ✅ TCP fallback (e.g., scan port 22/80/443 if ICMP is blocked)
 - ✅ RTT-based color output
 - ✅ Multithreaded (customizable thread count)
 - ✅ Cross-platform: Linux & macOS
+- ✅ Shell completion for Bash and Zsh
+- ✅ Man page documentation
 
 ## 🚀 Usage
 
 ```bash
-network-scanner <CIDR> [--threads N] [--mode icmp|tcp|fallback] [--port PORT]
+network-scanner [--threads N] [--mode icmp|tcp|fallback] [--port PORT]
 ```
 
 ### Example
 
 ```bash
-network-scanner 192.168.1.0/24 --mode fallback --port 443 --threads 64
+network-scanner --mode fallback --port 443 --threads 64
+```
+
+### Shell Completion
+
+The tool comes with shell completion support for both Bash and Zsh. After installation, shell completion will automatically be available for:
+
+- Command options (`--threads`, `--mode`, `--port`, etc.)
+- Mode values (`icmp`, `tcp`, `fallback`)
+
+You can access help information using:
+
+```bash
+# View man page
+man network-scanner
+
+# View command help
+network-scanner --help
 ```
 
 ## 📋 Dependencies
@@ -99,6 +117,24 @@ network-scanner --version
 
 ### Build instructions
 
+#### Using configure script (recommended for most users)
+
+```bash
+git clone https://github.com/tldr-it-stepankutaj/network-scanner.git
+cd network-scanner
+./configure
+make
+```
+
+You can customize the build with options:
+```bash
+./configure --prefix=/usr/local --debug
+```
+
+Run `./configure --help` to see all available options.
+
+#### Using CMake directly
+
 ```bash
 git clone https://github.com/tldr-it-stepankutaj/network-scanner.git
 cd network-scanner
@@ -110,11 +146,33 @@ make -j$(nproc)
 ## 📦 Install
 
 ### From Source
+
+If you used the configure script:
 ```bash
 sudo make install
 ```
 
-Manpage and shell completions will also be installed if available.
+If you used CMake directly:
+```bash
+# From the build directory
+sudo make install
+```
+
+You can also uninstall the software with:
+```bash
+sudo make uninstall
+```
+
+This will install:
+- The main executable to `/usr/bin/`
+- Man page to `/usr/share/man/man1/`
+- Bash completion to `/usr/share/bash-completion/completions/`
+- Zsh completion to `/usr/share/zsh/site-functions/`
+
+To change the installation prefix, use:
+```bash
+./configure --prefix=/usr/local
+```
 
 ### From Package
 ```bash
