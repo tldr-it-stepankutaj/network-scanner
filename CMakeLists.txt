@@ -79,13 +79,21 @@ target_include_directories(network-analyzer
         ${CURL_INCLUDE_DIRS}
 )
 
-# Installation rules
-install(TARGETS network-analyzer
-        RUNTIME DESTINATION bin
-)
-
 # Include GNUInstallDirs for standard installation directories
 include(GNUInstallDirs)
+
+# Installation rules
+install(TARGETS network-analyzer
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# Create symlink from network-analyzer to network-scanner in binary directory
+if(UNIX)
+    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/network-analyzer
+        ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/network-scanner
+    )")
+endif()
 
 # Install man page
 install(

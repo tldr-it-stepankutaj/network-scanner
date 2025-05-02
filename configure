@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Simple configure script for network-scanner
+# Configure script for network-scanner
 
 # Default options
 BUILD_TYPE="Release"
@@ -39,24 +39,28 @@ for arg in "$@"; do
 done
 
 # Check for required tools
-command -v cmake >/dev/null 2>&1 || { echo "CMake is required but not installed. Aborting."; exit 1; }
-command -v g++ >/dev/null 2>&1 || command -v clang++ >/dev/null 2>&1 || { echo "C++ compiler is required but not installed. Aborting."; exit 1; }
+command -v cmake >/dev/null 2>&1 || { echo "Error: CMake is required but not installed. Aborting."; exit 1; }
+command -v g++ >/dev/null 2>&1 || command -v clang++ >/dev/null 2>&1 || { echo "Error: C++ compiler is required but not installed. Aborting."; exit 1; }
 
 # Create build directory if it doesn't exist
 mkdir -p build
 
 # Configure with CMake
-# shellcheck disable=SC2164
 cd build
 cmake .. -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
          -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-         "$CMAKE_OPTIONS"
+         $CMAKE_OPTIONS
+
+# Check if cmake succeeded
+if [ $? -ne 0 ]; then
+    echo "Error: CMake configuration failed."
+    exit 1
+fi
 
 # Generate a simple Makefile in the root directory
-# shellcheck disable=SC2103
 cd ..
 cat > Makefile << EOF
-# Generated Makefile for network-scanner
+# Auto-generated Makefile for network-scanner
 
 all:
 	@cd build && make

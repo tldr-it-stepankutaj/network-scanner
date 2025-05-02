@@ -1,3 +1,4 @@
+#include <atomic>
 #include <iostream>
 #include <string>
 #include <thread>
