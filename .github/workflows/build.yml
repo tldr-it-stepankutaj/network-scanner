@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y cmake g++ dpkg-dev rpm ruby ruby-dev rubygems build-essential
+          sudo apt install -y cmake g++ dpkg-dev rpm ruby ruby-dev rubygems build-essential libcurl4-openssl-dev
           sudo gem install --no-document fpm
 
       - name: Configure & build
