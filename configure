@@ -1,0 +1,90 @@
+#!/bin/bash
+
+# Simple configure script for network-scanner
+
+# Default options
+BUILD_TYPE="Release"
+PREFIX="/usr"
+CMAKE_OPTIONS=""
+
+# Parse arguments
+for arg in "$@"; do
+  case $arg in
+    --help)
+      echo "Usage: ./configure [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --prefix=PREFIX         Install architecture-independent files in PREFIX"
+      echo "                          [default: /usr]"
+      echo "  --debug                 Build with debug symbols"
+      echo "  --cmake-options=OPTS    Pass additional options to CMake"
+      echo ""
+      exit 0
+      ;;
+    --prefix=*)
+      PREFIX="${arg#*=}"
+      ;;
+    --debug)
+      BUILD_TYPE="Debug"
+      ;;
+    --cmake-options=*)
+      CMAKE_OPTIONS="${arg#*=}"
+      ;;
+    *)
+      echo "Unknown option: $arg"
+      echo "Try './configure --help' for more information"
+      exit 1
+      ;;
+  esac
+done
+
+# Check for required tools
+command -v cmake >/dev/null 2>&1 || { echo "CMake is required but not installed. Aborting."; exit 1; }
+command -v g++ >/dev/null 2>&1 || command -v clang++ >/dev/null 2>&1 || { echo "C++ compiler is required but not installed. Aborting."; exit 1; }
+
+# Create build directory if it doesn't exist
+mkdir -p build
+
+# Configure with CMake
+# shellcheck disable=SC2164
+cd build
+cmake .. -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+         -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+         "$CMAKE_OPTIONS"
+
+# Generate a simple Makefile in the root directory
+# shellcheck disable=SC2103
+cd ..
+cat > Makefile << EOF
+# Generated Makefile for network-scanner
+
+all:
+	@cd build && make
+
+install:
+	@cd build && make install
+
+clean:
+	@cd build && make clean
+
+distclean:
+	@rm -rf build
+	@rm -f Makefile
+
+uninstall:
+	@cd build && make uninstall
+
+.PHONY: all install clean distclean uninstall
+EOF
+
+chmod +x Makefile
+
+echo ""
+echo "Configuration complete!"
+echo ""
+echo "Build type: $BUILD_TYPE"
+echo "Install prefix: $PREFIX"
+echo ""
+echo "Run 'make' to build the project"
+echo "Run 'sudo make install' to install"
+echo ""

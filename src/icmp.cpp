@@ -56,7 +56,7 @@ namespace Icmp {
     }
 
     bool pingRawSocket(const std::string& ip, bool quiet) {
-        int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+        const int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
         if (sockfd < 0) return false;
 
         sockaddr_in addr{};
@@ -111,7 +111,7 @@ namespace Icmp {
     }
 
     bool pingDatagramSocket(const std::string& ip, bool quiet) {
-        int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
+        const int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
         if (sockfd < 0) return false;
 
         sockaddr_in addr{};
@@ -143,8 +143,7 @@ namespace Icmp {
 
         if (select(sockfd + 1, &fds, nullptr, nullptr, &timeout) > 0) {
             char recvbuf[1500];
-            ssize_t n = recv(sockfd, recvbuf, sizeof(recvbuf), 0);
-            if (n > 0) {
+            if (const ssize_t n = recv(sockfd, recvbuf, sizeof(recvbuf), 0); n > 0) {
                 result = true;
             }
         }
@@ -157,9 +156,8 @@ namespace Icmp {
         if (pingDatagramSocket(ip, quiet)) return true;
         if (pingRawSocket(ip, quiet)) return true;
 
-        std::string cmd = "fping -c1 -t100 " + ip + " 2>/dev/null 1>/dev/null";
-        int ret = std::system(cmd.c_str());
-        if (ret == 0) {
+        const std::string cmd = "fping -c1 -t100 " + ip + " 2>/dev/null 1>/dev/null";
+        if (const int ret = std::system(cmd.c_str()); ret == 0) {
             return true;
         }
 
