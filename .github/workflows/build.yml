@@ -20,9 +20,13 @@ jobs:
 
       - name: Configure & build
         run: |
-          cmake -B build -DCMAKE_INSTALL_PREFIX=/usr
+          cmake -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTS=ON -DSTATIC_LIBCXX=ON
           cmake --build build --parallel
           cmake --install build --prefix dist/usr
+
+      - name: Run tests
+        run: |
+          cd build && ctest --output-on-failure
 
       - name: Create tar.gz
         run: |
@@ -66,10 +70,42 @@ jobs:
             *.deb
             *.rpm
 
+  build-macos:
+    runs-on: macos-14
+    name: Build on macOS (ARM64)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install cmake curl
+
+      - name: Configure & build
+        run: |
+          cmake -B build -DBUILD_TESTS=ON
+          cmake --build build --parallel
+
+      - name: Run tests
+        run: |
+          cd build && ctest --output-on-failure
+
+      - name: Create tar.gz
+        run: |
+          cmake --install build --prefix dist/usr
+          tar -czvf network-scanner-macos-arm64.tar.gz -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-macos
+          path: |
+            network-scanner-macos-arm64.tar.gz
+
   release:
     name: Create GitHub Release
     needs:
       - build-linux
+      - build-macos
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -81,6 +117,12 @@ jobs:
           name: release-artifacts-linux
           path: artifacts
 
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts-macos
+          path: artifacts
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -88,8 +130,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: artifacts/*
           body: |
-            🚀 New release ${{ github.ref_name }} of network-scanner
-            - Includes Linux binaries
-            - DEB & RPM packages
+            New release ${{ github.ref_name }} of network-scanner
+            - Linux binaries (x86_64): DEB, RPM, tar.gz
+            - macOS binaries (ARM64): tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

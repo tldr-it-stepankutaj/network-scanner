@@ -1,4 +1,5 @@
 #include "../include/tcp.hpp"
+#include "../include/logger.hpp"
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -9,12 +10,14 @@
 #include <mutex>
 
 namespace Tcp {
-    // Protect console output
     static std::mutex outputMutex;
 
-    bool ping(const std::string& ip, int port, bool quiet) {
+    bool ping(const std::string& ip, int port, bool quiet, int timeoutMs) {
         const int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (sockfd < 0) return false;
+        if (sockfd < 0) {
+            Logger::debug("TCP: cannot create socket for " + ip + ":" + std::to_string(port));
+            return false;
+        }
 
         fcntl(sockfd, F_SETFL, O_NONBLOCK);
 
@@ -28,13 +31,13 @@ namespace Tcp {
         if (const int connResult = connect(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
             connResult < 0 && errno != EINPROGRESS) {
             close(sockfd);
-            return false; // connection failed immediately
+            return false;
         }
 
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(sockfd, &fds);
-        timeval timeout{1, 0};
+        timeval timeout{timeoutMs / 1000, (timeoutMs % 1000) * 1000};
 
         bool success = false;
 
@@ -58,6 +61,7 @@ namespace Tcp {
                               << " (RTT: " << ms << " ms)\033[0m" << std::endl;
                 }
 
+                Logger::debug("TCP: " + ip + ":" + std::to_string(port) + " alive (RTT: " + std::to_string(ms) + "ms)");
                 success = true;
             }
         }

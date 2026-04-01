@@ -1,5 +1,6 @@
 #include "../include/network_info.hpp"
 #include "../include/utils.hpp"
+#include "../include/logger.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -14,7 +15,14 @@
 #include <ifaddrs.h>
 #include <curl/curl.h>
 
-// Function to write callback for curl
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#include <net/route.h>
+#include <netinet/in.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#endif
+
 size_t WriteCallback(void* contents, const size_t size, const size_t nmemb, std::string* userp) {
     userp->append(static_cast<char*>(contents), size * nmemb);
     return size * nmemb;
@@ -33,10 +41,12 @@ std::string getPublicIP() {
         curl_easy_cleanup(curl);
 
         if (res != CURLE_OK) {
+            Logger::debug("Failed to get public IP: " + std::string(curl_easy_strerror(res)));
             return "Error: " + std::string(curl_easy_strerror(res));
         }
     }
 
+    Logger::debug("Public IP: " + readBuffer);
     return readBuffer;
 }
 
@@ -48,22 +58,18 @@ NetworkInfo getNetworkInfo() {
     if (getifaddrs(&ifap) == 0) {
         for (struct ifaddrs* ifa = ifap; ifa; ifa = ifa->ifa_next) {
             if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
-                // Skip loopback interface
-                if (strcmp(ifa->ifa_name, "lo") == 0) continue;
+                if (strcmp(ifa->ifa_name, "lo") == 0 || strcmp(ifa->ifa_name, "lo0") == 0) continue;
 
-                // Get IP address
                 auto* sa = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
                 char buffer[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &(sa->sin_addr), buffer, INET_ADDRSTRLEN);
 
-                // Skip IPv6 and non-routable addresses
                 std::string ip(buffer);
                 if (ip.find("127.") == 0 || ip.find("169.254.") == 0) continue;
 
                 info.localIp = ip;
                 info.interfaceName = ifa->ifa_name;
 
-                // Get subnet mask
                 if (ifa->ifa_netmask) {
                     auto* mask = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_netmask);
                     char maskBuffer[INET_ADDRSTRLEN];
@@ -71,26 +77,25 @@ NetworkInfo getNetworkInfo() {
                     info.subnetMask = maskBuffer;
                 }
 
+                Logger::debug("Detected interface: " + info.interfaceName + " IP: " + info.localIp + " mask: " + info.subnetMask);
                 break;
             }
         }
         freeifaddrs(ifap);
     }
 
-    // Get gateway IP by reading /proc/net/route
+    // Get gateway IP
+#ifdef __linux__
     if (std::ifstream routeFile("/proc/net/route"); routeFile.is_open()) {
         std::string line;
-        // Skip header line
-        std::getline(routeFile, line);
+        std::getline(routeFile, line); // skip header
 
         while (std::getline(routeFile, line)) {
             std::istringstream iss(line);
             std::string iface, dest, gateway;
             iss >> iface >> dest >> gateway;
 
-            // Default route has destination 00000000
             if (dest == "00000000" && iface == info.interfaceName) {
-                // Convert hex gateway to IP
                 unsigned int gwAddr;
                 std::stringstream ss;
                 ss << std::hex << gateway;
@@ -101,17 +106,71 @@ NetworkInfo getNetworkInfo() {
                 char buffer[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &addr, buffer, INET_ADDRSTRLEN);
 
-                // Reverse byte order
                 std::string gw(buffer);
                 auto parts = Utils::ipToUint(gw);
                 info.gatewayIp = Utils::uintToIp(parts);
+                Logger::debug("Gateway detected (Linux): " + info.gatewayIp);
                 break;
             }
         }
         routeFile.close();
     }
+#elif defined(__APPLE__)
+    // macOS: use route command via fork/exec
+    {
+        int pipefd[2];
+        if (pipe(pipefd) == 0) {
+            pid_t pid = fork();
+            if (pid == 0) {
+                close(pipefd[0]);
+                dup2(pipefd[1], STDOUT_FILENO);
+                close(pipefd[1]);
+                int devnull = open("/dev/null", O_RDWR);
+                if (devnull >= 0) { dup2(devnull, STDERR_FILENO); close(devnull); }
+                execlp("route", "route", "-n", "get", "default", nullptr);
+                _exit(127);
+            } else if (pid > 0) {
+                close(pipefd[1]);
+                char buf[4096];
+                std::string output;
+                ssize_t n;
+                while ((n = read(pipefd[0], buf, sizeof(buf) - 1)) > 0) {
+                    buf[n] = '\0';
+                    output += buf;
+                }
+                close(pipefd[0]);
+                int status;
+                waitpid(pid, &status, 0);
 
-    // Get public IP
+                // Parse "gateway: x.x.x.x" from output
+                std::istringstream oss(output);
+                std::string line;
+                while (std::getline(oss, line)) {
+                    auto pos = line.find("gateway:");
+                    if (pos != std::string::npos) {
+                        std::string gw = line.substr(pos + 8);
+                        // trim whitespace
+                        gw.erase(0, gw.find_first_not_of(" \t"));
+                        gw.erase(gw.find_last_not_of(" \t\r\n") + 1);
+                        if (Utils::isValidIpv4(gw)) {
+                            info.gatewayIp = gw;
+                            Logger::debug("Gateway detected (macOS): " + info.gatewayIp);
+                        }
+                        break;
+                    }
+                }
+            } else {
+                close(pipefd[0]);
+                close(pipefd[1]);
+            }
+        }
+    }
+#endif
+
+    if (info.gatewayIp.empty()) {
+        Logger::debug("Gateway not detected");
+    }
+
     info.publicIp = getPublicIP();
 
     return info;
@@ -121,10 +180,8 @@ std::string ipToCIDR(const std::string& ip, const std::string& mask) {
     const uint32_t ipInt = Utils::ipToUint(ip);
     const uint32_t maskInt = Utils::ipToUint(mask);
 
-    // Calculate network address
     const uint32_t network = ipInt & maskInt;
 
-    // Calculate CIDR prefix length
     int prefixLength = 0;
     uint32_t m = maskInt;
     while (m & 0x80000000) {
@@ -132,7 +189,6 @@ std::string ipToCIDR(const std::string& ip, const std::string& mask) {
         m <<= 1;
     }
 
-    // Return network address with CIDR notation
     return Utils::uintToIp(network) + "/" + std::to_string(prefixLength);
 }
 
@@ -140,5 +196,5 @@ std::string getSubnet24(const std::string& ip) {
     if (size_t lastDot = ip.find_last_of('.'); lastDot != std::string::npos) {
         return ip.substr(0, lastDot) + ".0/24";
     }
-    return ip + "/24";  // Fallback
+    return ip + "/24";
 }

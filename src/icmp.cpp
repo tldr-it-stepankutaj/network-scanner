@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include <sys/wait.h>
 #include <chrono>
 #include <iostream>
 #include <cstring>
@@ -8,41 +9,41 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <fcntl.h>
 
 // ICMP headers
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 
-// If icmphdr is not fully defined, provide a fallback definition
 #ifndef ICMP_ECHO
 #define ICMP_ECHO 8
 #endif
 
-// Some systems use icmp_hdr instead of icmphdr
 #if !defined(HAVE_STRUCT_ICMPHDR) && !defined(__GLIBC__)
 struct icmphdr {
-    uint8_t type;        /* message type */
-    uint8_t code;        /* type sub-code */
+    uint8_t type;
+    uint8_t code;
     uint16_t checksum;
     union {
         struct {
             uint16_t id;
             uint16_t sequence;
-        } echo;          /* echo datagram */
-        uint32_t gateway;    /* gateway address */
+        } echo;
+        uint32_t gateway;
         struct {
             uint16_t unused;
             uint16_t mtu;
-        } frag;          /* path mtu discovery */
+        } frag;
     } un;
 };
 #endif
 
 #include "../include/icmp.hpp"
+#include "../include/utils.hpp"
+#include "../include/logger.hpp"
 
 namespace Icmp {
-    // Protect console output
     static std::mutex outputMutex;
 
     uint16_t checksum(void* data, int len) {
@@ -55,9 +56,17 @@ namespace Icmp {
         return static_cast<uint16_t>(~sum);
     }
 
-    bool pingRawSocket(const std::string& ip, bool quiet) {
+    bool pingRawSocket(const std::string& ip, bool quiet, int timeoutMs) {
+        if (!Utils::isValidIpv4(ip)) {
+            Logger::debug("pingRawSocket: invalid IP " + ip);
+            return false;
+        }
+
         const int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-        if (sockfd < 0) return false;
+        if (sockfd < 0) {
+            Logger::debug("pingRawSocket: cannot create raw socket (need root?)");
+            return false;
+        }
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
@@ -73,14 +82,15 @@ namespace Icmp {
 
         if (sendto(sockfd, sendbuf, sizeof(sendbuf), 0,
                    reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+            Logger::debug("pingRawSocket: sendto failed for " + ip);
             close(sockfd);
             return false;
-                   }
+        }
 
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(sockfd, &fds);
-        timeval timeout{1, 0};
+        timeval timeout{timeoutMs / 1000, (timeoutMs % 1000) * 1000};
 
         bool result = false;
 
@@ -93,15 +103,12 @@ namespace Icmp {
                                reinterpret_cast<sockaddr*>(&from), &socklen);
 
             if (n > 0) {
-                // Verify this is a response to our ping
                 const auto* ip_header = reinterpret_cast<struct ip*>(recvbuf);
                 const int ip_header_len = ip_header->ip_hl << 2;
 
-                // ICMP header follows the IP header
-
-                // Check if this is an ICMP ECHO REPLY (type 0) and if it's for our specific ID
                 if (const auto* icmp_reply = reinterpret_cast<struct icmphdr*>(recvbuf + ip_header_len); icmp_reply->type == 0 && icmp_reply->un.echo.id == getpid()) {
                     result = true;
+                    Logger::debug("pingRawSocket: " + ip + " is alive");
                 }
             }
         }
@@ -110,9 +117,14 @@ namespace Icmp {
         return result;
     }
 
-    bool pingDatagramSocket(const std::string& ip, bool quiet) {
+    bool pingDatagramSocket(const std::string& ip, bool quiet, int timeoutMs) {
+        if (!Utils::isValidIpv4(ip)) return false;
+
         const int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
-        if (sockfd < 0) return false;
+        if (sockfd < 0) {
+            Logger::debug("pingDatagramSocket: cannot create dgram ICMP socket");
+            return false;
+        }
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
@@ -126,8 +138,6 @@ namespace Icmp {
         icmp->un.echo.sequence = 1;
         icmp->checksum = checksum(sendbuf, sizeof(sendbuf));
 
-        auto start = std::chrono::steady_clock::now();
-
         if (sendto(sockfd, sendbuf, sizeof(sendbuf), 0,
                    reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
             close(sockfd);
@@ -137,7 +147,7 @@ namespace Icmp {
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(sockfd, &fds);
-        timeval timeout{1, 0};
+        timeval timeout{timeoutMs / 1000, (timeoutMs % 1000) * 1000};
 
         bool result = false;
 
@@ -145,6 +155,7 @@ namespace Icmp {
             char recvbuf[1500];
             if (const ssize_t n = recv(sockfd, recvbuf, sizeof(recvbuf), 0); n > 0) {
                 result = true;
+                Logger::debug("pingDatagramSocket: " + ip + " is alive");
             }
         }
 
@@ -152,26 +163,48 @@ namespace Icmp {
         return result;
     }
 
-    bool pingFallback(const std::string& ip, bool quiet) {
-        if (pingDatagramSocket(ip, quiet)) return true;
-        if (pingRawSocket(ip, quiet)) return true;
+    bool pingFallback(const std::string& ip, bool quiet, int timeoutMs) {
+        if (!Utils::isValidIpv4(ip)) {
+            Logger::warn("pingFallback: rejecting invalid IP: " + ip);
+            return false;
+        }
 
-        const std::string cmd = "fping -c1 -t100 " + ip + " 2>/dev/null 1>/dev/null";
-        if (const int ret = std::system(cmd.c_str()); ret == 0) {
-            return true;
+        if (pingDatagramSocket(ip, quiet, timeoutMs)) return true;
+        if (pingRawSocket(ip, quiet, timeoutMs)) return true;
+
+        // Use fork/exec instead of system() to avoid shell injection
+        Logger::debug("pingFallback: trying fping for " + ip);
+        std::string timeoutArg = "-t" + std::to_string(timeoutMs);
+
+        pid_t pid = fork();
+        if (pid == 0) {
+            // Child process: redirect stdout/stderr to /dev/null
+            int devnull = open("/dev/null", O_RDWR);
+            if (devnull >= 0) {
+                dup2(devnull, STDOUT_FILENO);
+                dup2(devnull, STDERR_FILENO);
+                close(devnull);
+            }
+            execlp("fping", "fping", "-c1", timeoutArg.c_str(), ip.c_str(), nullptr);
+            _exit(127);
+        } else if (pid > 0) {
+            int status;
+            waitpid(pid, &status, 0);
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+                Logger::debug("pingFallback: fping reports " + ip + " alive");
+                return true;
+            }
         }
 
         return false;
     }
 
-    bool ping(const std::string& ip, std::atomic<int>& counter, const int total, const bool quiet) {
-        const bool res = pingFallback(ip, quiet);
+    bool ping(const std::string& ip, std::atomic<int>& counter, const int total, const bool quiet, int timeoutMs) {
+        const bool res = pingFallback(ip, quiet, timeoutMs);
 
-        // Only lock for output operations
         {
             std::lock_guard<std::mutex> lock(outputMutex);
 
-            // If we found a live IP, print it first (unless in quiet mode)
             if (res && !quiet) {
                 std::cerr << ip << std::endl;
             }
@@ -180,7 +213,6 @@ namespace Icmp {
             constexpr int width = 30;
             const int filled = static_cast<int>((static_cast<double>(done) * width) / total);
 
-            // Print the progress bar (unless in quiet mode)
             if (!quiet) {
                 std::cerr << "\r[";
                 for (int i = 0; i < width; ++i) std::cerr << (i < filled ? '#' : '.');
@@ -191,8 +223,8 @@ namespace Icmp {
         return res;
     }
 
-    bool ping(const std::string& ip, bool quiet) {
+    bool ping(const std::string& ip, bool quiet, int timeoutMs) {
         std::atomic<int> dummy = 0;
-        return ping(ip, dummy, 1, quiet);
+        return ping(ip, dummy, 1, quiet, timeoutMs);
     }
 }

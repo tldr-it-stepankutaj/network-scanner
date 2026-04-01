@@ -13,7 +13,7 @@ namespace NetworkAnalyzer {
     inline const std::string VERSION_STRING = "Network Analyzer v@PROJECT_VERSION@";
 
     // Rok vydání pro copyright
-    constexpr int COPYRIGHT_YEAR = 2025;
+    constexpr int COPYRIGHT_YEAR = 2026;
 
     // Autoři
     inline const std::string AUTHORS = "TLDR;IT s.r.o.";

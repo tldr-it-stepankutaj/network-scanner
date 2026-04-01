@@ -31,4 +31,9 @@ namespace Utils {
         uint32_t end = start | ~mask;
         return {start, end};
     }
+
+    bool isValidIpv4(const std::string& ip) {
+        struct in_addr addr{};
+        return inet_pton(AF_INET, ip.c_str(), &addr) == 1;
+    }
 }

@@ -1,6 +1,7 @@
 #include "../include/device_identifier.hpp"
 #include "../include/tcp.hpp"
 #include "../include/icmp.hpp"
+#include "../include/logger.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -11,9 +12,12 @@
 #include <arpa/inet.h>
 #include <cstring>
 #include <vector>
+#include <algorithm>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 
 DeviceIdentifier::DeviceIdentifier() {
-    // Initialize common port to service mapping
     portToService[21] = "FTP";
     portToService[22] = "SSH";
     portToService[23] = "Telnet";
@@ -30,31 +34,35 @@ DeviceIdentifier::DeviceIdentifier() {
     portToService[123] = "NTP";
     portToService[161] = "SNMP";
     portToService[9100] = "Printer";
-    portToService[62078] = "Apple Device"; // iPhone sync
-    portToService[5353] = "mDNS";          // Often used by Apple devices
-    portToService[5228] = "Android Device"; // Google Play services
-    portToService[9000] = "Android ADB";    // Android Debug Bridge
+    portToService[62078] = "Apple Device";
+    portToService[5353] = "mDNS";
+    portToService[5228] = "Android Device";
+    portToService[9000] = "Android ADB";
+    portToService[7000] = "AirPlay Device";
+    portToService[8009] = "Chromecast";
+    portToService[8060] = "Roku Device";
+    portToService[1900] = "UPNP Device";
+    portToService[1883] = "Smart Home Device";
+    portToService[1080] = "Security Camera";
 
-    // Add more device-specific ports
-    portToService[7000] = "AirPlay Device"; // AirPlay protocol
-    portToService[8009] = "Chromecast";     // Chromecast device
-    portToService[8060] = "Roku Device";    // Roku media player
-    portToService[1900] = "UPNP Device";    // Universal Plug and Play
-    portToService[1883] = "Smart Home Device"; // MQTT protocol often used by IoT devices
-    portToService[1080] = "Security Camera"; // Common for security cameras
-
-    // Load MAC vendor database if available
     if (std::ifstream file("/usr/share/nmap/nmap-mac-prefixes"); file.is_open()) {
         std::string line;
         while (std::getline(file, line)) {
             if (line.empty() || line[0] == '#') continue;
 
             std::istringstream iss(line);
+            std::string prefix;
             std::string vendor;
-            if (std::string prefix; iss >> prefix >> vendor) {
-                macToVendor[prefix] = vendor;
+            if (iss >> prefix) {
+                std::getline(iss >> std::ws, vendor);
+                if (!vendor.empty()) {
+                    macToVendor[prefix] = vendor;
+                }
             }
         }
+        Logger::debug("Loaded " + std::to_string(macToVendor.size()) + " MAC vendor entries");
+    } else {
+        Logger::debug("MAC vendor database not found at /usr/share/nmap/nmap-mac-prefixes");
     }
 }
 
@@ -66,72 +74,123 @@ std::string DeviceIdentifier::resolveHostname(const std::string& ip) {
     inet_pton(AF_INET, ip.c_str(), &sa.sin_addr);
 
     if (getnameinfo(reinterpret_cast<struct sockaddr*>(&sa), sizeof(sa), hostname, sizeof(hostname), nullptr, 0, NI_NAMEREQD) == 0) {
+        Logger::debug("Resolved " + ip + " -> " + std::string(hostname));
         return {hostname};
     }
 
     return "";
 }
 
-std::string DeviceIdentifier::checkCommonServices(const std::string& ip) {
-    // Check for iPhone sync port specifically
-    if (Tcp::ping(ip, 62078, true)) {
-        return "Apple iPhone/iPad";
-    }
+std::string DeviceIdentifier::lookupMacVendor(const std::string& ip) {
+    if (macToVendor.empty()) return "";
 
-    // Check for Android specific ports
-    if (Tcp::ping(ip, 5228, true) || Tcp::ping(ip, 9000, true)) {
-        return "Android Device";
-    }
+    // Read ARP table to find MAC for this IP
+    std::string mac;
 
-    // Check for AirPlay/Apple TV
-    if (Tcp::ping(ip, 7000, true) || Tcp::ping(ip, 5353, true)) {
-        return "Apple Device";
-    }
-
-    // Check for Smart TV/Streaming devices
-    if (Tcp::ping(ip, 8009, true)) {
-        return "Google Chromecast";
-    }
-
-    if (Tcp::ping(ip, 8060, true)) {
-        return "Roku Device";
-    }
-
-    // For other services, check our full mapping
-    for (const auto& [port, service] : portToService) {
-        if (Tcp::ping(ip, port, true)) {
-            return service;
+#ifdef __linux__
+    std::ifstream arpFile("/proc/net/arp");
+    if (arpFile.is_open()) {
+        std::string line;
+        std::getline(arpFile, line); // skip header
+        while (std::getline(arpFile, line)) {
+            std::istringstream iss(line);
+            std::string arpIp, hwType, flags, hwAddr;
+            iss >> arpIp >> hwType >> flags >> hwAddr;
+            if (arpIp == ip && hwAddr != "00:00:00:00:00:00") {
+                mac = hwAddr;
+                break;
+            }
         }
+    }
+#elif defined(__APPLE__)
+    // On macOS, use arp command output via fork/exec
+    int pipefd[2];
+    if (pipe(pipefd) == 0) {
+        pid_t pid = fork();
+        if (pid == 0) {
+            close(pipefd[0]);
+            dup2(pipefd[1], STDOUT_FILENO);
+            close(pipefd[1]);
+            int devnull = open("/dev/null", O_RDWR);
+            if (devnull >= 0) { dup2(devnull, STDERR_FILENO); close(devnull); }
+            execlp("arp", "arp", "-n", ip.c_str(), nullptr);
+            _exit(127);
+        } else if (pid > 0) {
+            close(pipefd[1]);
+            char buf[512];
+            std::string output;
+            ssize_t n;
+            while ((n = read(pipefd[0], buf, sizeof(buf) - 1)) > 0) {
+                buf[n] = '\0';
+                output += buf;
+            }
+            close(pipefd[0]);
+            int status;
+            waitpid(pid, &status, 0);
+
+            // Parse "host (ip) at aa:bb:cc:dd:ee:ff ..."
+            auto atPos = output.find(" at ");
+            if (atPos != std::string::npos) {
+                auto macStart = atPos + 4;
+                auto macEnd = output.find(' ', macStart);
+                std::string candidate = output.substr(macStart, macEnd - macStart);
+                if (candidate.find(':') != std::string::npos && candidate != "(incomplete)") {
+                    mac = candidate;
+                }
+            }
+        } else {
+            close(pipefd[0]);
+            close(pipefd[1]);
+        }
+    }
+#endif
+
+    if (mac.empty()) return "";
+
+    // Extract OUI prefix (first 3 octets) and convert to uppercase hex without colons
+    std::string oui;
+    for (char c : mac) {
+        if (c == ':' || c == '-') continue;
+        oui += static_cast<char>(toupper(static_cast<unsigned char>(c)));
+        if (oui.size() == 6) break;
+    }
+
+    auto it = macToVendor.find(oui);
+    if (it != macToVendor.end()) {
+        Logger::debug("MAC vendor for " + ip + " (" + mac + "): " + it->second);
+        return it->second;
+    }
+
+    return "";
+}
+
+std::string DeviceIdentifier::checkCommonServices(const std::string& ip) {
+    if (Tcp::ping(ip, 62078, true)) return "Apple iPhone/iPad";
+    if (Tcp::ping(ip, 5228, true) || Tcp::ping(ip, 9000, true)) return "Android Device";
+    if (Tcp::ping(ip, 7000, true) || Tcp::ping(ip, 5353, true)) return "Apple Device";
+    if (Tcp::ping(ip, 8009, true)) return "Google Chromecast";
+    if (Tcp::ping(ip, 8060, true)) return "Roku Device";
+
+    for (const auto& [port, service] : portToService) {
+        if (Tcp::ping(ip, port, true)) return service;
     }
 
     return "";
 }
 
 std::string DeviceIdentifier::identifyByPattern(const std::string& ip) {
-    // Extract the last octet of the IP address
     const std::string lastOctet = ip.substr(ip.find_last_of('.') + 1);
 
-    // Common gateway addresses - be more selective now
-    if (lastOctet == "1" || lastOctet == "254") {
-        return "Possible Router/Gateway";
-    }
-
-    // Common patterns for network devices
-    if (lastOctet == "10" || lastOctet == "20" || lastOctet == "50" || lastOctet == "100") {
-        return "Possible Network Device";
-    }
+    if (lastOctet == "1" || lastOctet == "254") return "Possible Router/Gateway";
+    if (lastOctet == "10" || lastOctet == "20" || lastOctet == "50" || lastOctet == "100") return "Possible Network Device";
 
     return "";
 }
 
 bool DeviceIdentifier::verifyHost(const std::string& ip) {
-    // Try ICMP ping first - most reliable method
-
     if (const bool icmpSuccess = Icmp::ping(ip, true); !icmpSuccess) {
-        // If ICMP fails, try multiple TCP ports that are commonly open
         int tcpSuccessCount = 0;
 
-        // Check common ports (similar to what Nmap checks)
         const std::vector<int> commonPorts = {
             80, 443, 22, 21, 23, 25, 53, 3389, 8080, 445,
             7000, 62078, 5353, 5228, 9000, 8009, 8060, 1900
@@ -140,72 +199,43 @@ bool DeviceIdentifier::verifyHost(const std::string& ip) {
         for (const int port : commonPorts) {
             if (Tcp::ping(ip, port, true)) {
                 tcpSuccessCount++;
-                if (tcpSuccessCount >= 2) {
-                    return true;  // Found at least 2 open ports, consider it alive
-                }
+                if (tcpSuccessCount >= 2) return true;
             }
         }
 
-        // If we get here, we didn't find enough open TCP ports
         return false;
     }
 
-    // For hosts that respond to ICMP, check at least one additional confirmation
-    // Try some common ports to see if any respond
     return Tcp::ping(ip, 80, true) || Tcp::ping(ip, 443, true) ||
            Tcp::ping(ip, 22, true) || Tcp::ping(ip, 8080, true) ||
            Tcp::ping(ip, 62078, true) || Tcp::ping(ip, 7000, true);
 }
 
 std::string DeviceIdentifier::identifyDevice(const std::string& ip) {
-    // First try to resolve hostname (most accurate)
+    Logger::debug("Identifying device: " + ip);
+
+    // First try to resolve hostname
     std::string hostname = resolveHostname(ip);
-    if (!hostname.empty()) {
-        return hostname;
-    }
+    if (!hostname.empty()) return hostname;
+
+    // Try MAC vendor lookup
+    std::string vendor = lookupMacVendor(ip);
+    if (!vendor.empty()) return "Vendor: " + vendor;
 
     // Try to identify by specific device ports
-    // iPhone/iPad detection
-    if (Tcp::ping(ip, 62078, true)) {
-        return "Apple iPhone/iPad";
-    }
+    if (Tcp::ping(ip, 62078, true)) return "Apple iPhone/iPad";
+    if (Tcp::ping(ip, 5228, true) || Tcp::ping(ip, 9000, true)) return "Android Device";
+    if (Tcp::ping(ip, 7000, true) && Tcp::ping(ip, 5353, true)) return "Apple TV";
+    if (Tcp::ping(ip, 8009, true)) return "Google Chromecast";
+    if (Tcp::ping(ip, 8060, true)) return "Roku Device";
 
-    // Android detection
-    if (Tcp::ping(ip, 5228, true) || Tcp::ping(ip, 9000, true)) {
-        return "Android Device";
-    }
-
-    // AirPlay/Apple TV detection
-    if (Tcp::ping(ip, 7000, true) && Tcp::ping(ip, 5353, true)) {
-        return "Apple TV";
-    }
-
-    // Smart TV/Streaming device detection
-    if (Tcp::ping(ip, 8009, true)) {
-        return "Google Chromecast";
-    }
-
-    if (Tcp::ping(ip, 8060, true)) {
-        return "Roku Device";
-    }
-
-    // Then try to identify by service detection for other devices
     std::string serviceType = checkCommonServices(ip);
-    if (!serviceType.empty()) {
-        return serviceType;
-    }
+    if (!serviceType.empty()) return serviceType;
 
-    // Try to verify if it's truly a live host with double-check
-    if (!verifyHost(ip)) {
-        return "Possible Ghost - Unconfirmed";
-    }
+    if (!verifyHost(ip)) return "Possible Ghost - Unconfirmed";
 
-    // Last resort: pattern matching
     std::string patternType = identifyByPattern(ip);
-    if (!patternType.empty()) {
-        return patternType;
-    }
+    if (!patternType.empty()) return patternType;
 
-    // Default fallback
     return "Unknown Device";
 }

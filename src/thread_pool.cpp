@@ -8,9 +8,9 @@ ThreadPool::ThreadPool(const size_t threads) {
                 {
                     std::unique_lock<std::mutex> lock(queue_mutex);
                     condition.wait(lock, [this] {
-                        return stop || !tasks.empty();
+                        return stop.load() || !tasks.empty();
                     });
-                    if (stop && tasks.empty()) return;
+                    if (stop.load() && tasks.empty()) return;
                     task = std::move(tasks.front());
                     tasks.pop();
                 }
@@ -23,16 +23,21 @@ ThreadPool::ThreadPool(const size_t threads) {
 void ThreadPool::enqueue(std::function<void()> task) {
     {
         std::unique_lock<std::mutex> lock(queue_mutex);
+        if (stop.load()) return;
         tasks.push(std::move(task));
     }
     condition.notify_one();
 }
 
-ThreadPool::~ThreadPool() {
-    {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-        stop = true;
-    }
+void ThreadPool::shutdown() {
+    stop.store(true);
     condition.notify_all();
-    for (auto& thread : workers) thread.join();
+}
+
+ThreadPool::~ThreadPool() {
+    stop.store(true);
+    condition.notify_all();
+    for (auto& thread : workers) {
+        if (thread.joinable()) thread.join();
+    }
 }
